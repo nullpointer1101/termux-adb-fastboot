@@ -8,15 +8,21 @@ Y='\033[1;33m'
 I='\033[0;90m'
 N='\033[0m'
 
+LOG="${TMPDIR:-$PREFIX/tmp}/.termux_adb_uninstall.log"
+mkdir -p "${TMPDIR:-$PREFIX/tmp}"
+
 run_step() {
     local msg="$1"
     local cmd="$2"
-    echo -e "${I}[..]${N} $msg..."
-    if eval "$cmd" > /dev/null 2>&1; then
-        echo -e "     └─> ${G}[OK]${N}\n"
+    echo -e "${I}${msg}...${N}"
+    if eval "$cmd" > "$LOG" 2>&1; then
+        echo -e "  -> ${G}OK${N}\n"
     else
-        echo -e "     └─> ${R}[FAILED]${N}"
-        echo -e "${R}$msg failed${N}\n"
+        echo -e "  -> ${R}FAILED${N}"
+        echo -e "${R}${msg} failed${N}"
+        echo -e "${I}last output:${N}"
+        tail -n 15 "$LOG"
+        echo
         exit 1
     fi
 }
@@ -25,7 +31,7 @@ echo
 echo -e "${Y}This will uninstall termux adb & fastboot and remove all related files${N}\n"
 
 while true; do
-    read -p "Are you sure you want to continue? (y/n): " choice
+    read -p "Are you sure you want to continue? (y/n): " choice < /dev/tty
     case "$choice" in
         [Yy]* )
             echo

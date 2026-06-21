@@ -4,11 +4,18 @@ Use ADB and Fastboot on your Android device without root access.
 
 ## Requirements
 
-- [Termux](https://f-droid.org/packages/com.termux/)
-- [Termux:API](https://f-droid.org/packages/com.termux.api/)
-- Storage access: Run `termux-setup-storage` before installation
+- [Termux](https://github.com/termux/termux-app/releases)
+- [Termux:API](https://github.com/termux/termux-api/releases/)
 
 ## Installation
+
+```bash
+termux-setup-storage
+```
+
+```bash
+pkg update && pkg upgrade -y
+```
 
 ```bash
 curl -sS https://raw.githubusercontent.com/nullPointer1101/termux-adb-fastboot/refs/heads/main/install.sh | bash

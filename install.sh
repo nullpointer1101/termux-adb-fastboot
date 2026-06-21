@@ -8,15 +8,21 @@ Y='\033[1;33m'
 I='\033[0;90m'
 N='\033[0m'
 
+LOG="${TMPDIR:-$PREFIX/tmp}/.termux_adb_install.log"
+mkdir -p "${TMPDIR:-$PREFIX/tmp}"
+
 run_step() {
     local msg="$1"
     local cmd="$2"
-    echo -e "${I}[..]${N} $msg..."
-    if eval "$cmd" > /dev/null 2>&1; then
-        echo -e "     └─> ${G}[OK]${N}\n"
+    echo -e "${I}${msg}...${N}"
+    if eval "$cmd" > "$LOG" 2>&1; then
+        echo -e "  -> ${G}OK${N}\n"
     else
-        echo -e "     └─> ${R}[FAILED]${N}"
-        echo -e "${R}$msg failed${N}\n"
+        echo -e "  -> ${R}FAILED${N}"
+        echo -e "${R}${msg} failed${N}"
+        echo -e "${I}last output:${N}"
+        tail -n 15 "$LOG"
+        echo
         exit 1
     fi
 }
@@ -30,26 +36,43 @@ fi
 
 if ! cmd package list packages --user 0 com.termux.api < /dev/null 2>/dev/null | grep -q 'com.termux.api'; then
     echo -e "${R}Termux:API app not found${N}"
-    echo -e "Install from: ${G}https://f-droid.org/packages/com.termux.api/${N}\n"
+    echo -e "Install from: ${G}https://github.com/termux/termux-api/releases/${N}\n"
     exit 1
 fi
+
+echo -e "${I}Checking for core package updates...${N}"
+pkg update -y > "$LOG" 2>&1 || true
+
+CRITICAL=$(apt list --upgradable 2>/dev/null | grep -E '^(bash|libc\+\+|termux-tools|termux-keyring|dpkg|apt|resolv-conf)/' | cut -d/ -f1 || true)
+
+if [ -n "$CRITICAL" ]; then
+    echo -e "  -> ${Y}restart needed${N}\n"
+    echo -e "${I}Core packages need upgrading first:${N} $(echo "$CRITICAL" | tr '\n' ' ')"
+    echo -e "${I}Upgrading them now...${N}"
+    pkg upgrade -y > "$LOG" 2>&1 || true
+    echo
+    echo -e "${Y}Close Termux completely (run command 'exit' & swipe it away from recent apps), reopen it, then run this script again.${N}"
+    exit 0
+fi
+
+echo -e "  -> ${G}OK${N}\n"
 
 CREATE_SHORTCUTS=true
 
 if pkg list-installed 2>/dev/null | grep -q "^android-tools/"; then
     echo -e "${Y}android-tools package is already installed${N}\n"
     echo "Do you want to remove it?"
-    echo -e "${I}(If you choose 'yes', adb and fastboot commands will work directly)"
-    echo -e "(If you choose 'no', you'll need to use termux-adb and termux-fastboot)${N}\n"
-    
+    echo -e "${I}(yes: adb/fastboot work directly)"
+    echo -e "(no: you'll use termux-adb/termux-fastboot instead)${N}\n"
+
     while true; do
-        read -p "Remove android-tools? (y/n): " choice
+        read -p "Remove android-tools? (y/n): " choice < /dev/tty
         case "$choice" in
             [Yy]* )
                 echo
-                echo -e "${Y}Removing android-tools...${N}"
-                pkg remove android-tools -y 2>/dev/null || true
-                echo -e "${G}Removed${N}\n"
+                echo -e "${I}Removing android-tools...${N}"
+                pkg remove android-tools -y > /dev/null 2>&1 || true
+                echo -e "  -> ${G}OK${N}\n"
                 CREATE_SHORTCUTS=true
                 break
                 ;;
@@ -67,19 +90,15 @@ if pkg list-installed 2>/dev/null | grep -q "^android-tools/"; then
     done
 fi
 
-run_step "Updating packages" \
-"pkg update && pkg upgrade -y"
+run_step "Upgrading remaining packages" \
+"pkg upgrade -y"
 
 run_step "Installing dependencies" \
 "pkg install -y coreutils gnupg wget libusb termux-api"
 
 if [ ! -f "$PREFIX/etc/apt/sources.list.d/termux-adb.list" ]; then
-    echo -e "${I}[..]${N} Adding termux-adb repo..."
-    mkdir -p "$PREFIX/etc/apt/sources.list.d"
-    echo "deb https://nohajc.github.io termux extras" > "$PREFIX/etc/apt/sources.list.d/termux-adb.list"
-    wget -qP "$PREFIX/etc/apt/trusted.gpg.d" https://nohajc.github.io/nohajc.gpg
-    pkg update > /dev/null 2>&1
-    echo -e "     └─> ${G}[OK]${N}\n"
+    run_step "Adding termux-adb repository" \
+"mkdir -p '$PREFIX/etc/apt/sources.list.d' && echo 'deb https://nohajc.github.io termux extras' > '$PREFIX/etc/apt/sources.list.d/termux-adb.list' && wget -qP '$PREFIX/etc/apt/trusted.gpg.d' https://nohajc.github.io/nohajc.gpg && pkg update"
 fi
 
 run_step "Installing termux-adb" \
@@ -87,14 +106,12 @@ run_step "Installing termux-adb" \
 
 if [ "$CREATE_SHORTCUTS" = true ]; then
     run_step "Creating shortcuts" \
-    "ln -sf '$PREFIX/bin/termux-adb' '$PREFIX/bin/adb' && ln -sf '$PREFIX/bin/termux-fastboot' '$PREFIX/bin/fastboot'"
+"ln -sf '$PREFIX/bin/termux-adb' '$PREFIX/bin/adb' && ln -sf '$PREFIX/bin/termux-fastboot' '$PREFIX/bin/fastboot'"
 fi
 
 echo -e "${G}Done!${N}\n"
 
 echo "Now you can use ADB and Fastboot in Termux without root"
-echo
-
 echo
 echo "For available commands, run:"
 if [ "$CREATE_SHORTCUTS" = true ]; then
